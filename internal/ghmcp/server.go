@@ -19,6 +19,7 @@ import (
 	"github.com/github/github-mcp-server/pkg/lockdown"
 	mcplog "github.com/github/github-mcp-server/pkg/log"
 	"github.com/github/github-mcp-server/pkg/raw"
+	"github.com/github/github-mcp-server/pkg/sessionstate"
 	"github.com/github/github-mcp-server/pkg/translations"
 	gogithub "github.com/google/go-github/v79/github"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -117,13 +118,28 @@ func NewMCPServer(cfg MCPServerConfig, logger *slog.Logger) (*server.MCPServer, 
 		}
 	}
 
+	// Create a new session for stateful authorization
+	session := sessionstate.NewSession()
+
 	hooks := &server.Hooks{
 		OnBeforeInitialize: []server.OnBeforeInitializeFunc{beforeInit},
 		OnBeforeAny: []server.BeforeAnyHookFunc{
-			func(ctx context.Context, _ any, _ mcp.MCPMethod, _ any) {
+			func(ctx context.Context, _ any, _ mcp.MCPMethod, request any) {
 				// Ensure the context is cleared of any previous errors
 				// as context isn't propagated through middleware
 				errors.ContextWithGitHubErrors(ctx)
+
+				// Validate tool calls against session policy
+				if toolCallRequest, ok := request.(*mcp.CallToolRequest); ok {
+					args, argsOk := toolCallRequest.Params.Arguments.(map[string]interface{})
+					if argsOk {
+						repoContext := sessionstate.ExtractRepositoryFromArgs(args)
+						if err := session.ValidateAndLock(repoContext); err != nil {
+							// Log policy violation (in production, this would return an error to the client)
+							logger.Warn("session policy violated", "error", err)
+						}
+					}
+				}
 			},
 		},
 	}
