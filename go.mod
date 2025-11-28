@@ -5,7 +5,7 @@ go 1.24.0
 require (
 	github.com/google/go-github/v79 v79.0.0
 	github.com/josephburnett/jd v1.9.2
-	github.com/mark3labs/mcp-go v0.36.0
+	github.com/mark3labs/mcp-go v0.43.1
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/migueleliasweb/go-github-mock v1.3.0
 	github.com/muesli/cache2go v0.0.0-20221011235721-518229cd8021
@@ -50,7 +50,7 @@ require (
 	github.com/sourcegraph/conc v0.3.1-0.20240121214520-5f936abd7ae8 // indirect
 	github.com/spf13/afero v1.15.0 // indirect
 	github.com/spf13/cast v1.10.0 // indirect
-	github.com/spf13/pflag v1.0.10
+	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	golang.org/x/oauth2 v0.29.0 // indirect
