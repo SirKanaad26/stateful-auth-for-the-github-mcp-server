@@ -2,6 +2,8 @@ package sessionstate
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewSession(t *testing.T) {
@@ -102,18 +104,20 @@ func TestValidateAndLockDifferentRepository(t *testing.T) {
 		Owner: "octocat",
 		Repo:  "Hello-World",
 	}
-	session.ValidateAndLock(repoContext1)
+	err := session.ValidateAndLock(repoContext1)
+	require.NoError(t, err)
 
 	// Try to access different repository
 	repoContext2 := &RepositoryContext{
 		Owner: "github",
 		Repo:  "gitignore",
 	}
-	err := session.ValidateAndLock(repoContext2)
+	err = session.ValidateAndLock(repoContext2)
 
 	if err == nil {
 		t.Error("call to different repository should error")
 	}
+
 
 	policyErr, ok := err.(*PolicyViolationError)
 	if !ok {

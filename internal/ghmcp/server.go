@@ -124,22 +124,10 @@ func NewMCPServer(cfg MCPServerConfig, logger *slog.Logger) (*server.MCPServer, 
 	hooks := &server.Hooks{
 		OnBeforeInitialize: []server.OnBeforeInitializeFunc{beforeInit},
 		OnBeforeAny: []server.BeforeAnyHookFunc{
-			func(ctx context.Context, _ any, _ mcp.MCPMethod, request any) {
+			func(ctx context.Context, _ any, _ mcp.MCPMethod, _ any) {
 				// Ensure the context is cleared of any previous errors
 				// as context isn't propagated through middleware
 				errors.ContextWithGitHubErrors(ctx)
-
-				// Validate tool calls against session policy
-				if toolCallRequest, ok := request.(*mcp.CallToolRequest); ok {
-					args, argsOk := toolCallRequest.Params.Arguments.(map[string]interface{})
-					if argsOk {
-						repoContext := sessionstate.ExtractRepositoryFromArgs(args)
-						if err := session.ValidateAndLock(repoContext); err != nil {
-							// Log policy violation (in production, this would return an error to the client)
-							logger.Warn("session policy violated", "error", err)
-						}
-					}
-				}
 			},
 		},
 	}
@@ -211,8 +199,8 @@ func NewMCPServer(cfg MCPServerConfig, logger *slog.Logger) (*server.MCPServer, 
 			return nil, fmt.Errorf("failed to enable toolsets: %w", err)
 		}
 
-		// Register all mcp functionality with the server
-		tsg.RegisterAll(ghServer)
+		// Register all mcp functionality with the server, applying session-based policy enforcement
+		tsg.RegisterAllWithSession(ghServer, session)
 	}
 
 	// Register specific tools if configured

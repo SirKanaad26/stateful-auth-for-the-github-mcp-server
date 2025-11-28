@@ -155,7 +155,7 @@ func TestConcurrentAccess(t *testing.T) {
 
 	// Launch multiple goroutines trying to validate different repos
 	for i := 0; i < 5; i++ {
-		go func(idx int) {
+		go func(_ int) {
 			repoContext := &RepositoryContext{
 				Owner: "octocat",
 				Repo:  "public-repo",
@@ -167,7 +167,7 @@ func TestConcurrentAccess(t *testing.T) {
 
 	// Launch goroutines trying to access a different repo
 	for i := 0; i < 5; i++ {
-		go func(idx int) {
+		go func(_ int) {
 			repoContext := &RepositoryContext{
 				Owner: "octocat",
 				Repo:  "different-repo",

@@ -1,10 +1,12 @@
 package toolsets
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
 
+	"github.com/github/github-mcp-server/pkg/sessionstate"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
@@ -92,6 +94,66 @@ func (t *Toolset) RegisterTools(s *server.MCPServer) {
 		for _, tool := range t.writeTools {
 			s.AddTool(tool.Tool, tool.Handler)
 		}
+	}
+}
+
+// RegisterToolsWithSession registers tools with optional session-based policy enforcement.
+// If session is not nil (must be *sessionstate.Session), tool handlers are wrapped to enforce
+// session-based access policies. Pass nil for session to use standard registration.
+func (t *Toolset) RegisterToolsWithSession(s *server.MCPServer, session interface{}) {
+	if !t.Enabled {
+		return
+	}
+
+	// If session is provided, wrap handlers; otherwise use standard registration
+	if session != nil {
+		sessState, ok := session.(*sessionstate.Session)
+		if !ok {
+			// Invalid session type, fall back to standard registration
+			t.RegisterTools(s)
+			return
+		}
+
+		for _, tool := range t.readTools {
+			handler := wrapToolHandlerWithSessionPolicy(tool.Handler, sessState)
+			s.AddTool(tool.Tool, handler)
+		}
+		if !t.readOnly {
+			for _, tool := range t.writeTools {
+				handler := wrapToolHandlerWithSessionPolicy(tool.Handler, sessState)
+				s.AddTool(tool.Tool, handler)
+			}
+		}
+	} else {
+		// No session, use standard registration
+		t.RegisterTools(s)
+	}
+}
+
+// wrapToolHandlerWithSessionPolicy wraps a tool handler to enforce session policies.
+func wrapToolHandlerWithSessionPolicy(handler server.ToolHandlerFunc, session *sessionstate.Session) server.ToolHandlerFunc {
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		// Extract repository context from arguments
+		args, ok := request.Params.Arguments.(map[string]interface{})
+		if !ok {
+			// Can't parse arguments, let the original handler deal with it
+			return handler(ctx, request)
+		}
+
+		// Extract repository context
+		repoContext := sessionstate.ExtractRepositoryFromArgs(args)
+
+		// Validate and lock to the repository (if applicable)
+		if err := session.ValidateAndLock(repoContext); err != nil {
+			// Return a proper error result to the client
+			return mcp.NewToolResultErrorFromErr(
+				fmt.Sprintf("session policy violation: %v", err),
+				err,
+			), nil
+		}
+
+		// Policy validated, call the original handler
+		return handler(ctx, request)
 	}
 }
 
@@ -251,8 +313,16 @@ func (tg *ToolsetGroup) EnableToolset(name string) error {
 }
 
 func (tg *ToolsetGroup) RegisterAll(s *server.MCPServer) {
+	tg.RegisterAllWithSession(s, nil)
+}
+
+// RegisterAllWithSession registers all toolsets with optional session-based policy enforcement.
+// If session is not nil, tool handlers will be wrapped to enforce session-based access policies.
+// The session parameter should be of type *sessionstate.Session but is passed as interface{}
+// to avoid circular imports.
+func (tg *ToolsetGroup) RegisterAllWithSession(s *server.MCPServer, session interface{}) {
 	for _, toolset := range tg.Toolsets {
-		toolset.RegisterTools(s)
+		toolset.RegisterToolsWithSession(s, session)
 		toolset.RegisterResourcesTemplates(s)
 		toolset.RegisterPrompts(s)
 	}

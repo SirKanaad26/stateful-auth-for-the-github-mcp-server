@@ -9,7 +9,7 @@ import (
 // ToolCallValidator creates a hook function that validates tool calls against session policy.
 // It should be used as a BeforeCallTool hook in the MCP server.
 func ToolCallValidator(session *Session) func(ctx context.Context, request *mcp.CallToolRequest) error {
-	return func(ctx context.Context, request *mcp.CallToolRequest) error {
+	return func(_ context.Context, request *mcp.CallToolRequest) error {
 		// Type assert the arguments to map[string]interface{}
 		args, ok := request.Params.Arguments.(map[string]interface{})
 		if !ok {
