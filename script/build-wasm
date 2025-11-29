@@ -1,0 +1,26 @@
+#!/bin/bash
+# Build sessionstate as a WebAssembly module
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(git rev-parse --show-toplevel)"
+
+# Create output directory
+mkdir -p "$PROJECT_ROOT/wasm/sessionstate"
+
+echo "Building sessionstate WASM module..."
+
+# Build WASM module
+cd "$PROJECT_ROOT"
+GOOS=js GOARCH=wasm go build \
+  -o wasm/sessionstate/sessionstate.wasm \
+  -ldflags="-s -w" \
+  ./cmd/wasm/sessionstate
+
+# Copy wasm_exec.js helper
+cp "$(go env GOROOT)/misc/wasm/wasm_exec.js" wasm/sessionstate/
+
+echo "✓ WASM module built successfully"
+echo "  Output: wasm/sessionstate/sessionstate.wasm"
+echo "  Helper: wasm/sessionstate/wasm_exec.js"
