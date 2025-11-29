@@ -137,15 +137,24 @@ func wrapToolHandlerWithSessionPolicy(handler server.ToolHandlerFunc, session *s
 		args, ok := request.Params.Arguments.(map[string]interface{})
 		if !ok {
 			// Can't parse arguments, let the original handler deal with it
+			fmt.Fprintf(os.Stderr, "[SESSION] Warning: Could not parse arguments for tool %s\n", request.Params.Name)
 			return handler(ctx, request)
 		}
 
 		// Extract repository context
 		repoContext := sessionstate.ExtractRepositoryFromArgs(args)
 
+		// Log what we found
+		if repoContext != nil && repoContext.Owner != "" && repoContext.Repo != "" {
+			fmt.Fprintf(os.Stderr, "[SESSION] Tool %s accessing repo %s/%s\n", request.Params.Name, repoContext.Owner, repoContext.Repo)
+		} else {
+			fmt.Fprintf(os.Stderr, "[SESSION] Tool %s has no repo context\n", request.Params.Name)
+		}
+
 		// Validate and lock to the repository (if applicable)
 		if err := session.ValidateAndLock(repoContext); err != nil {
 			// Return a proper error result to the client
+			fmt.Fprintf(os.Stderr, "[SESSION] POLICY VIOLATION: %v\n", err)
 			return mcp.NewToolResultErrorFromErr(
 				fmt.Sprintf("session policy violation: %v", err),
 				err,
@@ -372,6 +381,14 @@ func (tg *ToolsetGroup) FindToolByName(toolName string) (*server.ServerTool, str
 // Respects read-only mode (skips write tools if readOnly=true).
 // Returns error if any tool is not found.
 func (tg *ToolsetGroup) RegisterSpecificTools(s *server.MCPServer, toolNames []string, readOnly bool) error {
+	return tg.RegisterSpecificToolsWithSession(s, toolNames, readOnly, nil)
+}
+
+// RegisterSpecificToolsWithSession registers specific tools with optional session-based policy enforcement.
+// If session is not nil (must be *sessionstate.Session), tool handlers are wrapped.
+// Respects read-only mode (skips write tools if readOnly=true).
+// Returns error if any tool is not found.
+func (tg *ToolsetGroup) RegisterSpecificToolsWithSession(s *server.MCPServer, toolNames []string, readOnly bool, session interface{}) error {
 	var skippedTools []string
 	for _, toolName := range toolNames {
 		tool, _, err := tg.FindToolByName(toolName)
@@ -389,8 +406,15 @@ func (tg *ToolsetGroup) RegisterSpecificTools(s *server.MCPServer, toolNames []s
 			}
 		}
 
-		// Register the tool
-		s.AddTool(tool.Tool, tool.Handler)
+		// Register the tool with optional session wrapping
+		handler := tool.Handler
+		if session != nil {
+			sessState, ok := session.(*sessionstate.Session)
+			if ok {
+				handler = wrapToolHandlerWithSessionPolicy(tool.Handler, sessState)
+			}
+		}
+		s.AddTool(tool.Tool, handler)
 	}
 
 	// Log skipped write tools if any

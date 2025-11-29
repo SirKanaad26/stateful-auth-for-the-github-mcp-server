@@ -1,6 +1,8 @@
 package sessionstate
 
 import (
+	"fmt"
+	"os"
 	"sync"
 )
 
@@ -29,6 +31,7 @@ func (s *Session) LockRepository(owner, repo string) {
 	s.lockedOwner = owner
 	s.lockedRepository = repo
 	s.isRepositoryLocked = true
+	fmt.Fprintf(os.Stderr, "[SESSION] LockRepository called: %s/%s\n", owner, repo)
 }
 
 // IsRepositoryLocked returns whether the session is locked to a repository.

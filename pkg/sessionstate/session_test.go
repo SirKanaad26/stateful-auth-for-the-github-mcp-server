@@ -118,7 +118,6 @@ func TestValidateAndLockDifferentRepository(t *testing.T) {
 		t.Error("call to different repository should error")
 	}
 
-
 	policyErr, ok := err.(*PolicyViolationError)
 	if !ok {
 		t.Errorf("error should be PolicyViolationError, got %T", err)

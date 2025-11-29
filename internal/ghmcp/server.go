@@ -122,7 +122,15 @@ func NewMCPServer(cfg MCPServerConfig, logger *slog.Logger) (*server.MCPServer, 
 	session := sessionstate.NewSession()
 
 	hooks := &server.Hooks{
-		OnBeforeInitialize: []server.OnBeforeInitializeFunc{beforeInit},
+		OnBeforeInitialize: []server.OnBeforeInitializeFunc{
+			func(_ context.Context, _ any, request *mcp.InitializeRequest) {
+				// Reset session on each new initialization (new conversation)
+				*session = *sessionstate.NewSession()
+				fmt.Fprintf(os.Stderr, "[SESSION] Reset on new initialization\n")
+				// Also call the original beforeInit logic
+				beforeInit(nil, nil, request)
+			},
+		},
 		OnBeforeAny: []server.BeforeAnyHookFunc{
 			func(ctx context.Context, _ any, _ mcp.MCPMethod, _ any) {
 				// Ensure the context is cleared of any previous errors
@@ -209,7 +217,8 @@ func NewMCPServer(cfg MCPServerConfig, logger *slog.Logger) (*server.MCPServer, 
 		enabledTools := github.CleanTools(cfg.EnabledTools)
 
 		// Register the specified tools (additive to any toolsets already enabled)
-		err = tsg.RegisterSpecificTools(ghServer, enabledTools, cfg.ReadOnly)
+		// Pass session for policy enforcement
+		err = tsg.RegisterSpecificToolsWithSession(ghServer, enabledTools, cfg.ReadOnly, session)
 		if err != nil {
 			return nil, fmt.Errorf("failed to register tools: %w", err)
 		}

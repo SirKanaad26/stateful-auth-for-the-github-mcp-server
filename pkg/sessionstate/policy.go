@@ -2,6 +2,7 @@ package sessionstate
 
 import (
 	"fmt"
+	"os"
 )
 
 // PolicyViolationError indicates that a tool call violates the session's access policy.
@@ -62,26 +63,34 @@ func (s *Session) EnforcePolicy(repoContext *RepositoryContext) error {
 func (s *Session) ValidateAndLock(repoContext *RepositoryContext) error {
 	if repoContext == nil {
 		// No repository context, nothing to validate or lock
+		fmt.Fprintf(os.Stderr, "[SESSION] ValidateAndLock: no repo context\n")
 		return nil
 	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	fmt.Fprintf(os.Stderr, "[SESSION] ValidateAndLock: repo=%s/%s, locked=%v, lockedRepo=%s/%s\n",
+		repoContext.Owner, repoContext.Repo, s.isRepositoryLocked, s.lockedOwner, s.lockedRepository)
+
 	// If not locked yet, lock to this repository
 	if !s.isRepositoryLocked {
 		s.lockedOwner = repoContext.Owner
 		s.lockedRepository = repoContext.Repo
 		s.isRepositoryLocked = true
+		fmt.Fprintf(os.Stderr, "[SESSION] LOCKED to %s/%s\n", repoContext.Owner, repoContext.Repo)
 		return nil
 	}
 
 	// Already locked, validate that this call targets the same repository
 	if s.lockedOwner == repoContext.Owner && s.lockedRepository == repoContext.Repo {
+		fmt.Fprintf(os.Stderr, "[SESSION] Repository matches, allowing\n")
 		return nil
 	}
 
 	// Policy violation
+	fmt.Fprintf(os.Stderr, "[SESSION] POLICY VIOLATION: locked=%s/%s, requested=%s/%s\n",
+		s.lockedOwner, s.lockedRepository, repoContext.Owner, repoContext.Repo)
 	return &PolicyViolationError{
 		Message: fmt.Sprintf(
 			"repository access denied: session is locked to %s/%s, but tool attempted to access %s/%s",
