@@ -63,6 +63,10 @@ type MCPServerConfig struct {
 
 	// RepoAccessTTL overrides the default TTL for repository access cache entries.
 	RepoAccessTTL *time.Duration
+
+	// WAsmSessionStatePath is the path to the sessionstate WASM module for policy enforcement.
+	// If provided, the server will use the WASM module instead of the native Go implementation.
+	WAsmSessionStatePath string
 }
 
 const stdioServerLogPrefix = "stdioserver"
@@ -119,13 +123,26 @@ func NewMCPServer(cfg MCPServerConfig, logger *slog.Logger) (*server.MCPServer, 
 	}
 
 	// Create a new session for stateful authorization
-	session := sessionstate.NewSession()
+	// If WASM path is provided, use WASM bridge; otherwise use native Go implementation
+	var session *sessionstate.Session
+	if cfg.WAsmSessionStatePath != "" {
+		session = sessionstate.NewSessionWithWASM(context.Background(), cfg.WAsmSessionStatePath)
+	} else {
+		session = sessionstate.NewSession()
+	}
+
+	// Store the config for session reset
+	sessionWASMPath := cfg.WAsmSessionStatePath
 
 	hooks := &server.Hooks{
 		OnBeforeInitialize: []server.OnBeforeInitializeFunc{
 			func(_ context.Context, _ any, request *mcp.InitializeRequest) {
 				// Reset session on each new initialization (new conversation)
-				*session = *sessionstate.NewSession()
+				if sessionWASMPath != "" {
+					session = sessionstate.NewSessionWithWASM(context.Background(), sessionWASMPath)
+				} else {
+					session = sessionstate.NewSession()
+				}
 				fmt.Fprintf(os.Stderr, "[SESSION] Reset on new initialization\n")
 				// Also call the original beforeInit logic
 				beforeInit(nil, nil, request)
@@ -276,6 +293,11 @@ type StdioServerConfig struct {
 
 	// RepoAccessCacheTTL overrides the default TTL for repository access cache entries.
 	RepoAccessCacheTTL *time.Duration
+
+	// WAsmSessionStatePath is the path to the sessionstate WASM module for policy enforcement.
+	// If provided, the server will use the WASM module instead of the native Go implementation.
+	// This is optional - if not provided or if loading fails, falls back to native Go.
+	WAsmSessionStatePath string
 }
 
 // RunStdioServer is not concurrent safe.
@@ -304,17 +326,18 @@ func RunStdioServer(cfg StdioServerConfig) error {
 	stdLogger := log.New(logOutput, stdioServerLogPrefix, 0)
 
 	ghServer, err := NewMCPServer(MCPServerConfig{
-		Version:           cfg.Version,
-		Host:              cfg.Host,
-		Token:             cfg.Token,
-		EnabledToolsets:   cfg.EnabledToolsets,
-		EnabledTools:      cfg.EnabledTools,
-		DynamicToolsets:   cfg.DynamicToolsets,
-		ReadOnly:          cfg.ReadOnly,
-		Translator:        t,
-		ContentWindowSize: cfg.ContentWindowSize,
-		LockdownMode:      cfg.LockdownMode,
-		RepoAccessTTL:     cfg.RepoAccessCacheTTL,
+		Version:              cfg.Version,
+		Host:                 cfg.Host,
+		Token:                cfg.Token,
+		EnabledToolsets:      cfg.EnabledToolsets,
+		EnabledTools:         cfg.EnabledTools,
+		DynamicToolsets:      cfg.DynamicToolsets,
+		ReadOnly:             cfg.ReadOnly,
+		Translator:           t,
+		ContentWindowSize:    cfg.ContentWindowSize,
+		LockdownMode:         cfg.LockdownMode,
+		RepoAccessTTL:        cfg.RepoAccessCacheTTL,
+		WAsmSessionStatePath: cfg.WAsmSessionStatePath,
 	}, logger)
 	if err != nil {
 		return fmt.Errorf("failed to create MCP server: %w", err)

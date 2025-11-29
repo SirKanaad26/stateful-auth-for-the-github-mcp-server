@@ -59,12 +59,19 @@ func (s *Session) EnforcePolicy(repoContext *RepositoryContext) error {
 // ValidateAndLock validates a tool call's repository context and locks the session if unlocked.
 // If the session is unlocked, it locks to the repository in the tool call.
 // If the session is locked, it validates that the tool call targets the same repository.
+// If WASM bridge is available, delegates to WASM for validation.
 // Returns nil if validation passes, otherwise returns a PolicyViolationError.
 func (s *Session) ValidateAndLock(repoContext *RepositoryContext) error {
 	if repoContext == nil {
 		// No repository context, nothing to validate or lock
 		fmt.Fprintf(os.Stderr, "[SESSION] ValidateAndLock: no repo context\n")
 		return nil
+	}
+
+	// If WASM bridge is enabled, delegate to WASM
+	if s.useWASM && s.wasmBridge != nil {
+		fmt.Fprintf(os.Stderr, "[SESSION] Delegating to WASM bridge for %s/%s\n", repoContext.Owner, repoContext.Repo)
+		return s.wasmBridge.ValidateAndLockWASM(repoContext)
 	}
 
 	s.mu.Lock()
