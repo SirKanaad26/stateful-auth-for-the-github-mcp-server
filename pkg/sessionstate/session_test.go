@@ -132,6 +132,20 @@ func TestValidateAndLockDifferentRepository(t *testing.T) {
 		t.Errorf("error should report requested repo as github/gitignore, got %s/%s",
 			policyErr.RequestedOwner, policyErr.RequestedRepo)
 	}
+
+	// Verify session is unlocked after rejection
+	if session.IsRepositoryLocked() {
+		t.Error("session should be unlocked after policy violation")
+	}
+
+	// Verify we can now lock to the previously rejected repository
+	err = session.ValidateAndLock(repoContext2)
+	require.NoError(t, err, "should be able to lock to previously rejected repo after unlock")
+
+	owner, repo := session.GetLockedRepository()
+	if owner != "github" || repo != "gitignore" {
+		t.Errorf("session should now be locked to github/gitignore, got %s/%s", owner, repo)
+	}
 }
 
 func TestValidateAndLockNilRepository(t *testing.T) {
