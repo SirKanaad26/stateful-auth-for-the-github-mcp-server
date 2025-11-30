@@ -7,11 +7,9 @@ import (
 
 // PolicyViolationError indicates that a tool call violates the session's access policy.
 type PolicyViolationError struct {
-	Message        string
-	LockedOwner    string
-	LockedRepo     string
-	RequestedOwner string
-	RequestedRepo  string
+	Message       string
+	LockedRepo    string
+	RequestedRepo string
 }
 
 func (e *PolicyViolationError) Error() string {
@@ -36,23 +34,20 @@ func (s *Session) EnforcePolicy(repoContext *RepositoryContext) error {
 	}
 
 	// Check if the requested repository matches the locked repository
-	if s.lockedOwner == repoContext.Owner && s.lockedRepository == repoContext.Repo {
+	// Note: Only checking repo name, not owner, to handle username variations
+	if s.lockedRepository == repoContext.Repo {
 		return nil
 	}
 
 	// Policy violation: attempting to access a different repository
 	return &PolicyViolationError{
 		Message: fmt.Sprintf(
-			"repository access denied: session is locked to %s/%s, but tool attempted to access %s/%s",
-			s.lockedOwner,
+			"repository access denied: session is locked to %s, but tool attempted to access %s",
 			s.lockedRepository,
-			repoContext.Owner,
 			repoContext.Repo,
 		),
-		LockedOwner:    s.lockedOwner,
-		LockedRepo:     s.lockedRepository,
-		RequestedOwner: repoContext.Owner,
-		RequestedRepo:  repoContext.Repo,
+		LockedRepo:    s.lockedRepository,
+		RequestedRepo: repoContext.Repo,
 	}
 }
 
@@ -77,49 +72,43 @@ func (s *Session) ValidateAndLock(repoContext *RepositoryContext) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	fmt.Fprintf(os.Stderr, "[SESSION] ValidateAndLock: repo=%s/%s, locked=%v, lockedRepo=%s/%s\n",
-		repoContext.Owner, repoContext.Repo, s.isRepositoryLocked, s.lockedOwner, s.lockedRepository)
+	fmt.Fprintf(os.Stderr, "[SESSION] ValidateAndLock: repo=%s, locked=%v, lockedRepo=%s\n",
+		repoContext.Repo, s.isRepositoryLocked, s.lockedRepository)
 
 	// If not locked yet, lock to this repository
 	if !s.isRepositoryLocked {
-		s.lockedOwner = repoContext.Owner
 		s.lockedRepository = repoContext.Repo
 		s.isRepositoryLocked = true
-		fmt.Fprintf(os.Stderr, "[SESSION] LOCKED to %s/%s\n", repoContext.Owner, repoContext.Repo)
+		fmt.Fprintf(os.Stderr, "[SESSION] LOCKED to %s (owner %s ignored)\n", repoContext.Repo, repoContext.Owner)
 		return nil
 	}
 
 	// Already locked, validate that this call targets the same repository
-	if s.lockedOwner == repoContext.Owner && s.lockedRepository == repoContext.Repo {
+	// Note: Only checking repo name, not owner, to handle username variations
+	if s.lockedRepository == repoContext.Repo {
 		fmt.Fprintf(os.Stderr, "[SESSION] Repository matches, allowing\n")
 		return nil
 	}
 
 	// Policy violation - unlock the session to allow legitimate cross-repo access after user intervention
-	fmt.Fprintf(os.Stderr, "[SESSION] POLICY VIOLATION: locked=%s/%s, requested=%s/%s\n",
-		s.lockedOwner, s.lockedRepository, repoContext.Owner, repoContext.Repo)
+	fmt.Fprintf(os.Stderr, "[SESSION] POLICY VIOLATION: locked=%s, requested=%s\n",
+		s.lockedRepository, repoContext.Repo)
 
 	// Capture locked repo info for error message before unlocking
-	lockedOwner := s.lockedOwner
 	lockedRepo := s.lockedRepository
 
 	// Unlock the session since execution will stop anyway
-	s.lockedOwner = ""
 	s.lockedRepository = ""
 	s.isRepositoryLocked = false
 	fmt.Fprintf(os.Stderr, "[SESSION] UNLOCKED after policy violation\n")
 
 	return &PolicyViolationError{
 		Message: fmt.Sprintf(
-			"repository access denied: session is locked to %s/%s, but tool attempted to access %s/%s",
-			lockedOwner,
+			"repository access denied: session is locked to %s, but tool attempted to access %s",
 			lockedRepo,
-			repoContext.Owner,
 			repoContext.Repo,
 		),
-		LockedOwner:    lockedOwner,
-		LockedRepo:     lockedRepo,
-		RequestedOwner: repoContext.Owner,
-		RequestedRepo:  repoContext.Repo,
+		LockedRepo:    lockedRepo,
+		RequestedRepo: repoContext.Repo,
 	}
 }

@@ -20,9 +20,8 @@ type WASMBridge struct {
 	mu      sync.RWMutex
 
 	// WASM module state
-	lockedOwner string
-	lockedRepo  string
-	isLocked    bool
+	lockedRepo string
+	isLocked   bool
 }
 
 // NewWASMBridge creates and initializes a WASM bridge with gojs module support
@@ -236,28 +235,26 @@ func (w *WASMBridge) ValidateAndLockWASM(repoContext *RepositoryContext) error {
 
 	// If not locked yet, lock to this repo
 	if !w.isLocked {
-		w.lockedOwner = repoContext.Owner
 		w.lockedRepo = repoContext.Repo
 		w.isLocked = true
-		fmt.Fprintf(os.Stderr, "[SESSION][WASM] Locked to repository: %s/%s\n", repoContext.Owner, repoContext.Repo)
+		fmt.Fprintf(os.Stderr, "[SESSION][WASM] Locked to repository: %s (owner %s ignored)\n", repoContext.Repo, repoContext.Owner)
 		return nil
 	}
 
 	// Check if accessing same repo
-	if w.lockedOwner == repoContext.Owner && w.lockedRepo == repoContext.Repo {
-		fmt.Fprintf(os.Stderr, "[SESSION][WASM] Access allowed: %s/%s (already locked)\n", repoContext.Owner, repoContext.Repo)
+	// Note: Only checking repo name, not owner, to handle username variations
+	if w.lockedRepo == repoContext.Repo {
+		fmt.Fprintf(os.Stderr, "[SESSION][WASM] Access allowed: %s (already locked)\n", repoContext.Repo)
 		return nil
 	}
 
 	// Policy violation
 	err := &PolicyViolationError{
-		LockedOwner:    w.lockedOwner,
-		LockedRepo:     w.lockedRepo,
-		RequestedOwner: repoContext.Owner,
-		RequestedRepo:  repoContext.Repo,
+		LockedRepo:    w.lockedRepo,
+		RequestedRepo: repoContext.Repo,
 		Message: fmt.Sprintf(
-			"repository access denied: session is locked to %s/%s, but tool attempted to access %s/%s",
-			w.lockedOwner, w.lockedRepo, repoContext.Owner, repoContext.Repo,
+			"repository access denied: session is locked to %s, but tool attempted to access %s",
+			w.lockedRepo, repoContext.Repo,
 		),
 	}
 	fmt.Fprintf(os.Stderr, "[SESSION][WASM] POLICY VIOLATION: %v\n", err)

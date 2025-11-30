@@ -43,14 +43,14 @@ func TestAttackScenario(t *testing.T) {
 	t.Logf("✓ Step 2: Cross-repo access BLOCKED - %s", policyErr.Error())
 
 	// Verify the error contains the correct details
-	if policyErr.LockedOwner != "octocat" || policyErr.LockedRepo != "public-repo" {
-		t.Errorf("error should report locked repo as octocat/public-repo, got %s/%s",
-			policyErr.LockedOwner, policyErr.LockedRepo)
+	if policyErr.LockedRepo != "public-repo" {
+		t.Errorf("error should report locked repo as public-repo, got %s",
+			policyErr.LockedRepo)
 	}
 
-	if policyErr.RequestedOwner != "octocat" || policyErr.RequestedRepo != "private-repo" {
-		t.Errorf("error should report requested repo as octocat/private-repo, got %s/%s",
-			policyErr.RequestedOwner, policyErr.RequestedRepo)
+	if policyErr.RequestedRepo != "private-repo" {
+		t.Errorf("error should report requested repo as private-repo, got %s",
+			policyErr.RequestedRepo)
 	}
 
 	t.Log("✓ Policy enforcement working correctly")
@@ -72,9 +72,9 @@ func TestAttackScenario(t *testing.T) {
 		t.Error("session should be locked after legitimate access")
 	}
 
-	owner, repo := session.GetLockedRepository()
-	if owner != "octocat" || repo != "private-repo" {
-		t.Errorf("session should be locked to octocat/private-repo, got %s/%s", owner, repo)
+	repo := session.GetLockedRepository()
+	if repo != "private-repo" {
+		t.Errorf("session should be locked to private-repo, got %s", repo)
 	}
 
 	t.Log("✓ Step 4: Legitimate cross-repo access works after user intervention")
@@ -279,10 +279,10 @@ func TestUnlockOnRejection(t *testing.T) {
 		t.Error("session should be locked after successful access")
 	}
 
-	owner, repo := session.GetLockedRepository()
-	if owner != "github" || repo != "repo-b" {
-		t.Errorf("session should be locked to github/repo-b, got %s/%s", owner, repo)
+	repo := session.GetLockedRepository()
+	if repo != "repo-b" {
+		t.Errorf("session should be locked to repo-b, got %s", repo)
 	}
 
-	t.Log("✓ Legitimate access to github/repo-b succeeded after unlock")
+	t.Log("✓ Legitimate access to repo-b succeeded after unlock")
 }

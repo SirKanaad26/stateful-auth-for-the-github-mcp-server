@@ -12,7 +12,6 @@ import (
 // Optionally integrates with WASM module for policy enforcement.
 type Session struct {
 	mu                 sync.RWMutex
-	lockedOwner        string
 	lockedRepository   string
 	isRepositoryLocked bool
 	wasmBridge         *WASMBridge
@@ -49,14 +48,14 @@ func NewSessionWithWASM(ctx context.Context, wasmPath string) *Session {
 
 // LockRepository locks the session to a specific repository.
 // Once locked, all subsequent tool calls must target this repository.
+// Note: Only locks by repository name, not owner, to handle username variations.
 func (s *Session) LockRepository(owner, repo string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.lockedOwner = owner
 	s.lockedRepository = repo
 	s.isRepositoryLocked = true
-	fmt.Fprintf(os.Stderr, "[SESSION] LockRepository called: %s/%s\n", owner, repo)
+	fmt.Fprintf(os.Stderr, "[SESSION] LockRepository called: %s (owner %s ignored)\n", repo, owner)
 }
 
 // IsRepositoryLocked returns whether the session is locked to a repository.
@@ -67,17 +66,18 @@ func (s *Session) IsRepositoryLocked() bool {
 	return s.isRepositoryLocked
 }
 
-// GetLockedRepository returns the owner and repository name that the session is locked to.
-// Returns empty strings if the session is not locked.
-func (s *Session) GetLockedRepository() (owner, repo string) {
+// GetLockedRepository returns the repository name that the session is locked to.
+// Returns empty string if the session is not locked.
+func (s *Session) GetLockedRepository() string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	return s.lockedOwner, s.lockedRepository
+	return s.lockedRepository
 }
 
-// MatchesLockedRepository checks if the given owner/repo matches the locked repository.
-// Returns true if the session is not locked (no restriction) or if the owner/repo matches.
+// MatchesLockedRepository checks if the given repo matches the locked repository.
+// Returns true if the session is not locked (no restriction) or if the repo matches.
+// Note: Ignores owner to handle username variations from LLM hallucinations.
 func (s *Session) MatchesLockedRepository(owner, repo string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -86,7 +86,7 @@ func (s *Session) MatchesLockedRepository(owner, repo string) bool {
 		return true
 	}
 
-	return s.lockedOwner == owner && s.lockedRepository == repo
+	return s.lockedRepository == repo
 }
 
 // Close closes the session and releases any resources (e.g., WASM runtime).

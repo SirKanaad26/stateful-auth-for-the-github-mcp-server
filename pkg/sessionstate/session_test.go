@@ -13,9 +13,9 @@ func TestNewSession(t *testing.T) {
 		t.Error("new session should not be locked")
 	}
 
-	owner, repo := session.GetLockedRepository()
-	if owner != "" || repo != "" {
-		t.Errorf("new session should have empty owner/repo, got %s/%s", owner, repo)
+	repo := session.GetLockedRepository()
+	if repo != "" {
+		t.Errorf("new session should have empty repo, got %s", repo)
 	}
 }
 
@@ -28,9 +28,9 @@ func TestLockRepository(t *testing.T) {
 		t.Error("session should be locked after LockRepository")
 	}
 
-	owner, repo := session.GetLockedRepository()
-	if owner != "octocat" || repo != "Hello-World" {
-		t.Errorf("expected octocat/Hello-World, got %s/%s", owner, repo)
+	repo := session.GetLockedRepository()
+	if repo != "Hello-World" {
+		t.Errorf("expected Hello-World, got %s", repo)
 	}
 }
 
@@ -73,9 +73,9 @@ func TestValidateAndLockFirstCall(t *testing.T) {
 		t.Error("session should be locked after first call")
 	}
 
-	owner, repo := session.GetLockedRepository()
-	if owner != "octocat" || repo != "Hello-World" {
-		t.Errorf("expected octocat/Hello-World, got %s/%s", owner, repo)
+	repo := session.GetLockedRepository()
+	if repo != "Hello-World" {
+		t.Errorf("expected Hello-World, got %s", repo)
 	}
 }
 
@@ -123,14 +123,12 @@ func TestValidateAndLockDifferentRepository(t *testing.T) {
 		t.Errorf("error should be PolicyViolationError, got %T", err)
 	}
 
-	if policyErr.LockedOwner != "octocat" || policyErr.LockedRepo != "Hello-World" {
-		t.Errorf("error should report locked repo as octocat/Hello-World, got %s/%s",
-			policyErr.LockedOwner, policyErr.LockedRepo)
+	if policyErr.LockedRepo != "Hello-World" {
+		t.Errorf("error should report locked repo as Hello-World, got %s", policyErr.LockedRepo)
 	}
 
-	if policyErr.RequestedOwner != "github" || policyErr.RequestedRepo != "gitignore" {
-		t.Errorf("error should report requested repo as github/gitignore, got %s/%s",
-			policyErr.RequestedOwner, policyErr.RequestedRepo)
+	if policyErr.RequestedRepo != "gitignore" {
+		t.Errorf("error should report requested repo as gitignore, got %s", policyErr.RequestedRepo)
 	}
 
 	// Verify session is unlocked after rejection
@@ -142,9 +140,9 @@ func TestValidateAndLockDifferentRepository(t *testing.T) {
 	err = session.ValidateAndLock(repoContext2)
 	require.NoError(t, err, "should be able to lock to previously rejected repo after unlock")
 
-	owner, repo := session.GetLockedRepository()
-	if owner != "github" || repo != "gitignore" {
-		t.Errorf("session should now be locked to github/gitignore, got %s/%s", owner, repo)
+	repo := session.GetLockedRepository()
+	if repo != "gitignore" {
+		t.Errorf("session should now be locked to gitignore, got %s", repo)
 	}
 }
 
