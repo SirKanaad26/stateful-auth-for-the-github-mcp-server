@@ -9,8 +9,14 @@ import (
 
 // ToolHandlerWrapper creates a wrapper around a tool handler that enforces session policy.
 // If the tool call violates the policy, it returns an error to the client.
+// If session is nil, stateful auth is disabled and the handler is called directly.
 func ToolHandlerWrapper(session *Session, originalHandler server.ToolHandlerFunc) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		// If session is nil, stateful auth is disabled - skip validation
+		if session == nil {
+			return originalHandler(ctx, request)
+		}
+
 		// Extract repository context from tool arguments
 		args, ok := request.Params.Arguments.(map[string]interface{})
 		if !ok {

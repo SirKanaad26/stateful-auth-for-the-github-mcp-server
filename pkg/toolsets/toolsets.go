@@ -142,6 +142,11 @@ func wrapToolHandlerWithSessionPolicy(handler server.ToolHandlerFunc, session *s
 		}
 
 		// Extract repository context
+		// If session is nil, stateful auth is disabled - skip validation
+		if session == nil {
+			return handler(ctx, request)
+		}
+
 		repoContext := sessionstate.ExtractRepositoryFromArgs(args)
 
 		// Log what we found

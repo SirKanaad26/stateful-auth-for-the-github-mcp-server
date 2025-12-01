@@ -1,0 +1,43 @@
+{
+  "Config": {
+    "Iterations": 100,
+    "ToolName": "get_file_contents",
+    "ToolArgs": {
+      "path": "README.md"
+    },
+    "TestWithAuth": true,
+    "TestWithoutAuth": true,
+    "Owner": "github",
+    "Repo": "github-mcp-server"
+  },
+  "WithAuthStats": {
+    "TotalCalls": 100,
+    "StatefulAuthCalls": 100,
+    "NoAuthCalls": 0,
+    "Min": 10413167,
+    "Max": 22202792,
+    "Average": 11348509,
+    "Median": 11326874,
+    "P50": 11327916,
+    "P95": 11440125,
+    "P99": 22202792,
+    "TotalDuration": 1135490250,
+    "SampleSize": 100
+  },
+  "WithoutAuthStats": {
+    "TotalCalls": 100,
+    "StatefulAuthCalls": 0,
+    "NoAuthCalls": 100,
+    "Min": 10604125,
+    "Max": 12501458,
+    "Average": 11266242,
+    "Median": 11356729,
+    "P50": 11356791,
+    "P95": 11464375,
+    "P99": 12501458,
+    "TotalDuration": 1127375625,
+    "SampleSize": 100
+  },
+  "OverheadAverage": 82267,
+  "OverheadPercentage": 0.7302079965972682
+}

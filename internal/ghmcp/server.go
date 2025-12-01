@@ -67,6 +67,10 @@ type MCPServerConfig struct {
 	// WAsmSessionStatePath is the path to the sessionstate WASM module for policy enforcement.
 	// If provided, the server will use the WASM module instead of the native Go implementation.
 	WAsmSessionStatePath string
+
+	// EnableStatefulAuth controls whether stateful authorization is enabled.
+	// When false, session validation is skipped for performance testing.
+	EnableStatefulAuth bool
 }
 
 const stdioServerLogPrefix = "stdioserver"
@@ -124,11 +128,17 @@ func NewMCPServer(cfg MCPServerConfig, logger *slog.Logger) (*server.MCPServer, 
 
 	// Create a new session for stateful authorization
 	// If WASM path is provided, use WASM bridge; otherwise use native Go implementation
+	// If EnableStatefulAuth is false, session will be nil (stateful auth disabled)
 	var session *sessionstate.Session
-	if cfg.WAsmSessionStatePath != "" {
-		session = sessionstate.NewSessionWithWASM(context.Background(), cfg.WAsmSessionStatePath)
+	if cfg.EnableStatefulAuth {
+		if cfg.WAsmSessionStatePath != "" {
+			session = sessionstate.NewSessionWithWASM(context.Background(), cfg.WAsmSessionStatePath)
+		} else {
+			session = sessionstate.NewSession()
+		}
+		fmt.Fprintf(os.Stderr, "[SERVER] Stateful authorization ENABLED\n")
 	} else {
-		session = sessionstate.NewSession()
+		fmt.Fprintf(os.Stderr, "[SERVER] Stateful authorization DISABLED (performance mode)\n")
 	}
 
 	// Store the config for session reset
@@ -138,12 +148,14 @@ func NewMCPServer(cfg MCPServerConfig, logger *slog.Logger) (*server.MCPServer, 
 		OnBeforeInitialize: []server.OnBeforeInitializeFunc{
 			func(_ context.Context, _ any, request *mcp.InitializeRequest) {
 				// Reset session on each new initialization (new conversation)
-				if sessionWASMPath != "" {
-					session = sessionstate.NewSessionWithWASM(context.Background(), sessionWASMPath)
-				} else {
-					session = sessionstate.NewSession()
+				if cfg.EnableStatefulAuth {
+					if sessionWASMPath != "" {
+						session = sessionstate.NewSessionWithWASM(context.Background(), sessionWASMPath)
+					} else {
+						session = sessionstate.NewSession()
+					}
+					fmt.Fprintf(os.Stderr, "[SESSION] Reset on new initialization\n")
 				}
-				fmt.Fprintf(os.Stderr, "[SESSION] Reset on new initialization\n")
 				// Also call the original beforeInit logic
 				beforeInit(nil, nil, request)
 			},
@@ -298,6 +310,10 @@ type StdioServerConfig struct {
 	// If provided, the server will use the WASM module instead of the native Go implementation.
 	// This is optional - if not provided or if loading fails, falls back to native Go.
 	WAsmSessionStatePath string
+
+	// EnableStatefulAuth controls whether stateful authorization is enabled.
+	// When false, session validation is skipped (no repository locking).
+	EnableStatefulAuth bool
 }
 
 // RunStdioServer is not concurrent safe.
@@ -338,6 +354,7 @@ func RunStdioServer(cfg StdioServerConfig) error {
 		LockdownMode:         cfg.LockdownMode,
 		RepoAccessTTL:        cfg.RepoAccessCacheTTL,
 		WAsmSessionStatePath: cfg.WAsmSessionStatePath,
+		EnableStatefulAuth:   cfg.EnableStatefulAuth,
 	}, logger)
 	if err != nil {
 		return fmt.Errorf("failed to create MCP server: %w", err)
