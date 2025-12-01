@@ -72,7 +72,6 @@ var (
 				ContentWindowSize:    viper.GetInt("content-window-size"),
 				LockdownMode:         viper.GetBool("lockdown-mode"),
 				RepoAccessCacheTTL:   &ttl,
-				WAsmSessionStatePath: viper.GetString("wasm-sessionstate-path"),
 				EnableStatefulAuth:   viper.GetBool("stateful-auth"),
 			}
 			return ghmcp.RunStdioServer(stdioServerConfig)
@@ -98,7 +97,6 @@ func init() {
 	rootCmd.PersistentFlags().Int("content-window-size", 5000, "Specify the content window size")
 	rootCmd.PersistentFlags().Bool("lockdown-mode", false, "Enable lockdown mode")
 	rootCmd.PersistentFlags().Duration("repo-access-cache-ttl", 5*time.Minute, "Override the repo access cache TTL (e.g. 1m, 0s to disable)")
-	rootCmd.PersistentFlags().String("wasm-sessionstate-path", "", "Path to sessionstate WASM module for policy enforcement (optional)")
 	rootCmd.PersistentFlags().Bool("stateful-auth", true, "Enable stateful authorization (repository locking per session)")
 
 	// Bind flag to viper
@@ -114,7 +112,6 @@ func init() {
 	_ = viper.BindPFlag("lockdown-mode", rootCmd.PersistentFlags().Lookup("lockdown-mode"))
 	_ = viper.BindPFlag("repo-access-cache-ttl", rootCmd.PersistentFlags().Lookup("repo-access-cache-ttl"))
 	_ = viper.BindPFlag("stateful-auth", rootCmd.PersistentFlags().Lookup("stateful-auth"))
-	_ = viper.BindPFlag("wasm-sessionstate-path", rootCmd.PersistentFlags().Lookup("wasm-sessionstate-path"))
 
 	// Add subcommands
 	rootCmd.AddCommand(stdioCmd)

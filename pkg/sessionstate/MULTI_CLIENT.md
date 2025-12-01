@@ -167,19 +167,11 @@ In `server.go`, replace single session with manager:
 ```go
 // OLD:
 var session *sessionstate.Session
-if cfg.WAsmSessionStatePath != "" {
-    session = sessionstate.NewSessionWithWASM(ctx, cfg.WAsmSessionStatePath)
-} else {
-    session = sessionstate.NewSession()
-}
+session = sessionstate.NewSession()
 
 // NEW:
 var sessionManager *sessionstate.SessionManager
-if cfg.WAsmSessionStatePath != "" {
-    sessionManager = sessionstate.NewSessionManagerWithWASM(ctx, cfg.WAsmSessionStatePath)
-} else {
-    sessionManager = sessionstate.NewSessionManager()
-}
+sessionManager = sessionstate.NewSessionManager()
 ```
 
 #### Step 2: Extract Client ID

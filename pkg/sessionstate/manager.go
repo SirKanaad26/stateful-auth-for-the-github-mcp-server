@@ -16,8 +16,6 @@ type SessionManager struct {
 	mu       sync.RWMutex
 
 	// Configuration
-	useWASM     bool
-	wasmPath    string
 	ctx         context.Context
 	autoCleanup bool
 	maxIdleTime time.Duration
@@ -29,18 +27,6 @@ func NewSessionManager() *SessionManager {
 		sessions:    make(map[string]*Session),
 		ctx:         context.Background(),
 		autoCleanup: false, // Disabled by default, can be enabled for long-running servers
-		maxIdleTime: 24 * time.Hour,
-	}
-}
-
-// NewSessionManagerWithWASM creates a session manager with WASM support.
-func NewSessionManagerWithWASM(ctx context.Context, wasmPath string) *SessionManager {
-	return &SessionManager{
-		sessions:    make(map[string]*Session),
-		useWASM:     true,
-		wasmPath:    wasmPath,
-		ctx:         ctx,
-		autoCleanup: false,
 		maxIdleTime: 24 * time.Hour,
 	}
 }
@@ -58,13 +44,7 @@ func (sm *SessionManager) GetOrCreateSession(clientID string) *Session {
 	}
 
 	// Create new session
-	var session *Session
-	if sm.useWASM && sm.wasmPath != "" {
-		session = NewSessionWithWASM(sm.ctx, sm.wasmPath)
-	} else {
-		session = NewSession()
-	}
-
+	session := NewSession()
 	sm.sessions[clientID] = session
 	fmt.Fprintf(os.Stderr, "[SESSION-MANAGER] Created new session for client %s (total sessions: %d)\n", clientID, len(sm.sessions))
 	return session
@@ -84,13 +64,7 @@ func (sm *SessionManager) ResetSession(clientID string) *Session {
 	defer sm.mu.Unlock()
 
 	// Create new session
-	var session *Session
-	if sm.useWASM && sm.wasmPath != "" {
-		session = NewSessionWithWASM(sm.ctx, sm.wasmPath)
-	} else {
-		session = NewSession()
-	}
-
+	session := NewSession()
 	sm.sessions[clientID] = session
 	fmt.Fprintf(os.Stderr, "[SESSION-MANAGER] Reset session for client %s\n", clientID)
 	return session

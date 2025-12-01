@@ -11,7 +11,6 @@ func TestNewSessionManager(t *testing.T) {
 
 	require.NotNil(t, sm)
 	require.Equal(t, 0, sm.SessionCount())
-	require.False(t, sm.useWASM)
 }
 
 func TestGetOrCreateSession(t *testing.T) {

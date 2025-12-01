@@ -12,7 +12,6 @@ A complete **multi-client session management system** for stateful authorization
 **Key Features:**
 - Thread-safe session storage (map + RWMutex)
 - Per-client session isolation
-- WASM support (optional)
 - Session lifecycle management (create, reset, remove)
 - Monitoring capabilities (count, list clients)
 
@@ -98,7 +97,7 @@ TokenToClientID(token string) string
 ### 3. **Flexible Architecture**
 - Supports multiple transport types (stdio, HTTP, custom)
 - Extensible client ID extraction
-- Optional WASM integration
+- Production-ready design
 
 ### 4. **Production-Ready**
 - Comprehensive test coverage (100% of new code)
