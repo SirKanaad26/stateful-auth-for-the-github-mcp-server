@@ -66,7 +66,23 @@ func (s *Session) ValidateAndLock(repoContext *RepositoryContext) error {
 	// If WASM bridge is enabled, delegate to WASM
 	if s.useWASM && s.wasmBridge != nil {
 		fmt.Fprintf(os.Stderr, "[SESSION] Delegating to WASM bridge for %s/%s\n", repoContext.Owner, repoContext.Repo)
-		return s.wasmBridge.ValidateAndLockWASM(repoContext)
+		err := s.wasmBridge.ValidateAndLockWASM(repoContext)
+
+		// If WASM validation failed, also unlock the native session state
+		if err != nil {
+			s.mu.Lock()
+			s.lockedRepository = ""
+			s.isRepositoryLocked = false
+			s.mu.Unlock()
+
+			// Unlock in WASM as well
+			if unlockErr := s.wasmBridge.UnlockRepositoryWASM(); unlockErr != nil {
+				fmt.Fprintf(os.Stderr, "[SESSION] Warning: WASM unlock failed: %v\n", unlockErr)
+			}
+			fmt.Fprintf(os.Stderr, "[SESSION] UNLOCKED after WASM policy violation\n")
+		}
+
+		return err
 	}
 
 	s.mu.Lock()

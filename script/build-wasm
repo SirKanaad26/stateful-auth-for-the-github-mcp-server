@@ -4,21 +4,38 @@ set -e
 # Build WASM module for session state validation
 mkdir -p wasm/sessionstate
 
-echo "[WASM] Building session state WASM module..."
-GOOS=js GOARCH=wasm CGO_ENABLED=0 go build \
+echo "[WASM] Building session state WASM module for wazero runtime..."
+
+# Option 1: Use WAT (WebAssembly Text) - no dependencies needed
+if command -v wat2wasm &> /dev/null; then
+  echo "[WASM] Compiling from WAT format using wat2wasm..."
+  wat2wasm wasm/sessionstate/sessionstate.wat -o wasm/sessionstate/sessionstate.wasm
+  echo "[WASM] Build completed successfully (WAT → WASM)"
+  ls -lh wasm/sessionstate/sessionstate.wasm
+  exit 0
+fi
+
+# Option 2: Use TinyGo
+if command -v tinygo &> /dev/null; then
+  echo "[WASM] Using TinyGo for optimized wazero-compatible build..."
+  tinygo build -o wasm/sessionstate/sessionstate.wasm \
+    -target=wasi \
+    -no-debug \
+    ./cmd/wasm/sessionstate
+  echo "[WASM] Build completed successfully (TinyGo)"
+  ls -lh wasm/sessionstate/sessionstate.wasm
+  exit 0
+fi
+
+# Option 3: Fall back to standard Go (has limitations)
+echo "[WASM] Neither wat2wasm nor TinyGo found..."
+echo "[WASM] To install wat2wasm: brew install wabt"
+echo "[WASM] Or install TinyGo: https://tinygo.org/getting-started/install/"
+echo ""
+echo "[WASM] Falling back to standard Go (limited compatibility)..."
+GOOS=wasip1 GOARCH=wasm CGO_ENABLED=0 go build \
   -o wasm/sessionstate/sessionstate.wasm \
   ./cmd/wasm/sessionstate
 
-echo "[WASM] Copying wasm_exec.js runtime helper..."
-WASM_EXEC_PATH="$(go env GOROOT)/lib/wasm/wasm_exec.js"
-if [ ! -f "$WASM_EXEC_PATH" ]; then
-  WASM_EXEC_PATH="$(go env GOROOT)/misc/wasm/wasm_exec.js"
-fi
-if [ -f "$WASM_EXEC_PATH" ]; then
-  cp "$WASM_EXEC_PATH" wasm/sessionstate/
-else
-  echo "[WASM] Warning: wasm_exec.js not found in GOROOT"
-fi
-
-echo "[WASM] Build completed successfully"
+echo "[WASM] Build completed with warnings"
 ls -lh wasm/sessionstate/

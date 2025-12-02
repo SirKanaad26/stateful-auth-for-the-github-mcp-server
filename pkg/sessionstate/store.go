@@ -17,6 +17,7 @@ type SessionStore struct {
 	mu         sync.RWMutex
 	dbPath     string
 	inMemory   bool
+	closed     bool
 	statements *preparedStatements
 }
 
@@ -44,9 +45,16 @@ func NewSessionStore(dbPath string) (*SessionStore, error) {
 	}
 
 	// Configure connection pool
-	db.SetMaxOpenConns(25)
-	db.SetMaxIdleConns(5)
-	db.SetConnMaxLifetime(5 * time.Minute)
+	// IMPORTANT: For :memory: databases, use only 1 connection to ensure all operations
+	// use the same in-memory database (SQLite creates a new DB per connection for :memory:)
+	if inMemory {
+		db.SetMaxOpenConns(1)
+		db.SetMaxIdleConns(1)
+	} else {
+		db.SetMaxOpenConns(25)
+		db.SetMaxIdleConns(5)
+		db.SetConnMaxLifetime(5 * time.Minute)
+	}
 
 	store := &SessionStore{
 		db:       db,
@@ -157,9 +165,10 @@ func (s *SessionStore) GetLock(clientID string) (string, bool, error) {
 	s.mu.RLock()
 	stmt := s.statements.getLock
 	db := s.db
+	closed := s.closed
 	s.mu.RUnlock()
 
-	if stmt == nil || db == nil {
+	if stmt == nil || db == nil || closed {
 		return "", false, fmt.Errorf("store is closed")
 	}
 
@@ -186,7 +195,11 @@ func (s *SessionStore) SetLock(clientID, repository string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	now := time.Now().Unix()
+	if s.closed {
+		return fmt.Errorf("store is closed")
+	}
+
+	now := time.Now().UnixMilli()
 	_, err := s.statements.setLock.Exec(clientID, repository, now, now, now)
 	if err != nil {
 		return fmt.Errorf("failed to set lock: %w", err)
@@ -201,7 +214,11 @@ func (s *SessionStore) ClearLock(clientID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	now := time.Now().Unix()
+	if s.closed {
+		return fmt.Errorf("store is closed")
+	}
+
+	now := time.Now().UnixMilli()
 	_, err := s.statements.clearLock.Exec(now, now, clientID)
 	if err != nil {
 		return fmt.Errorf("failed to clear lock: %w", err)
@@ -215,6 +232,10 @@ func (s *SessionStore) ClearLock(clientID string) error {
 func (s *SessionStore) DeleteSession(clientID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	if s.closed {
+		return fmt.Errorf("store is closed")
+	}
 
 	_, err := s.statements.deleteSession.Exec(clientID)
 	if err != nil {
@@ -230,6 +251,10 @@ func (s *SessionStore) SessionCount() (int, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
+	if s.closed {
+		return 0, fmt.Errorf("store is closed")
+	}
+
 	var count int
 	err := s.statements.sessionCount.QueryRow().Scan(&count)
 	if err != nil {
@@ -244,7 +269,11 @@ func (s *SessionStore) CleanupStale(maxAge time.Duration) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	cutoff := time.Now().Add(-maxAge).Unix()
+	if s.closed {
+		return 0, fmt.Errorf("store is closed")
+	}
+
+	cutoff := time.Now().Add(-maxAge).UnixMilli()
 	result, err := s.statements.cleanup.Exec(cutoff)
 	if err != nil {
 		return 0, fmt.Errorf("failed to cleanup stale sessions: %w", err)
@@ -262,15 +291,19 @@ func (s *SessionStore) CleanupStale(maxAge time.Duration) (int, error) {
 func (s *SessionStore) touchSession(clientID string) {
 	s.mu.RLock()
 	db := s.db
+	closed := s.closed
 	s.mu.RUnlock()
 
-	if db == nil {
+	if db == nil || closed {
 		return // Store is closed, silently ignore
 	}
 
-	now := time.Now().Unix()
+	now := time.Now().UnixMilli()
 	_, err := db.Exec(`UPDATE sessions SET last_access_at = ? WHERE client_id = ?`, now, clientID)
-	if err != nil && err != sql.ErrConnDone {
+	// Silently ignore errors when database is closed or doesn't exist anymore
+	// This can happen in async goroutines when tests clean up quickly
+	if err != nil && err != sql.ErrConnDone && !s.closed {
+		// Only log if the store isn't closed
 		fmt.Fprintf(os.Stderr, "[SESSION STORE] Warning: failed to update last_access_at for %s: %v\n", clientID, err)
 	}
 }
@@ -279,6 +312,8 @@ func (s *SessionStore) touchSession(clientID string) {
 func (s *SessionStore) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	s.closed = true
 
 	// Close prepared statements first
 	if s.statements != nil {

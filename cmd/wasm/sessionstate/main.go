@@ -4,108 +4,92 @@
 package main
 
 import (
-	"fmt"
 	"sync"
-	"syscall/js"
+	"unsafe"
 )
 
+// Per-instance state - each WASM module instance has its own isolated copy
+// When wazero instantiates this module, each instance gets separate linear memory,
+// ensuring complete session isolation between different clients
 var (
 	lockedRepository   string
 	isRepositoryLocked bool
 	mu                 sync.RWMutex
 )
 
-func main() {
-	fmt.Println("[WASM] Session state validation module initialized")
+// main is required for WASM but does nothing - wazero loads via exported functions
+func main() {}
 
-	// Register functions to JavaScript global
-	js.Global().Set("validateAndLock", js.FuncOf(jsValidateAndLock))
-	js.Global().Set("lockRepository", js.FuncOf(jsLockRepository))
-	js.Global().Set("unlockRepository", js.FuncOf(jsUnlockRepository))
-	js.Global().Set("getLockStatus", js.FuncOf(jsGetLockStatus))
-	js.Global().Set("isLocked", js.FuncOf(jsIsLocked))
-
-	fmt.Println("[WASM] Functions registered successfully")
-
-	// Keep the program alive
-	select {}
-}
-
-// jsValidateAndLock validates that we can access a repository
-func jsValidateAndLock(this js.Value, args []js.Value) any {
-	if len(args) < 2 {
-		return js.ValueOf(1) // error
-	}
-
-	owner := args[0].String()
-	repo := args[1].String()
+//export validate_and_lock
+func validateAndLock(ownerPtr, ownerLen, repoPtr, repoLen uint32) uint32 {
+	owner := readString(ownerPtr, ownerLen)
+	repo := readString(repoPtr, repoLen)
 
 	mu.Lock()
 	defer mu.Unlock()
 
-	if isRepositoryLocked && lockedRepository != fmt.Sprintf("%s/%s", owner, repo) {
-		fmt.Printf("[WASM] Policy violation: attempt to access %s/%s while locked to %s\n", owner, repo, lockedRepository)
-		return js.ValueOf(1) // policy violation
+	fullRepoName := owner + "/" + repo
+
+	// Check if already locked to a different repository
+	if isRepositoryLocked && lockedRepository != fullRepoName {
+		// Policy violation: trying to access different repository
+		return 1
 	}
 
-	lockedRepository = fmt.Sprintf("%s/%s", owner, repo)
+	// Lock to this repository
+	lockedRepository = fullRepoName
 	isRepositoryLocked = true
 
-	fmt.Printf("[WASM] ValidateAndLock succeeded for %s/%s\n", owner, repo)
-	return js.ValueOf(0) // success
+	return 0 // success
 }
 
-// jsLockRepository locks a specific repository
-func jsLockRepository(this js.Value, args []js.Value) any {
-	if len(args) < 2 {
-		return js.ValueOf(1) // error
-	}
-
-	owner := args[0].String()
-	repo := args[1].String()
+//export lock_repository
+func lockRepository(ownerPtr, ownerLen, repoPtr, repoLen uint32) uint32 {
+	owner := readString(ownerPtr, ownerLen)
+	repo := readString(repoPtr, repoLen)
 
 	mu.Lock()
 	defer mu.Unlock()
 
-	lockedRepository = fmt.Sprintf("%s/%s", owner, repo)
+	lockedRepository = owner + "/" + repo
 	isRepositoryLocked = true
 
-	fmt.Printf("[WASM] Repository locked: %s\n", lockedRepository)
-	return js.ValueOf(0) // success
+	return 0 // success
 }
 
-// jsUnlockRepository unlocks the current repository
-func jsUnlockRepository(this js.Value, args []js.Value) any {
+//export unlock_repository
+func unlockRepository() uint32 {
 	mu.Lock()
 	defer mu.Unlock()
 
 	if !isRepositoryLocked {
-		return js.ValueOf(0) // already unlocked
+		return 0 // already unlocked
 	}
 
-	fmt.Printf("[WASM] Repository unlocked: %s\n", lockedRepository)
 	lockedRepository = ""
 	isRepositoryLocked = false
 
-	return js.ValueOf(0) // success
+	return 0 // success
 }
 
-// jsGetLockStatus returns the current lock status
-func jsGetLockStatus(this js.Value, args []js.Value) any {
+//export check_lock_status
+func checkLockStatus() uint32 {
 	mu.RLock()
 	defer mu.RUnlock()
 
-	result := js.Global().Get("Object").New()
-	result.Set("isLocked", js.ValueOf(isRepositoryLocked))
-	result.Set("lockedRepository", js.ValueOf(lockedRepository))
-
-	return result
+	if isRepositoryLocked {
+		return 1
+	}
+	return 0
 }
 
-// jsIsLocked returns whether a repository is locked
-func jsIsLocked(this js.Value, args []js.Value) any {
-	mu.RLock()
-	defer mu.RUnlock()
-
-	return js.ValueOf(isRepositoryLocked)
+// readString reads a string from WASM linear memory at the given pointer and length
+func readString(ptr, length uint32) string {
+	if length == 0 {
+		return ""
+	}
+	// Convert pointer to byte slice using unsafe
+	// This reads from the WASM module's linear memory
+	bytes := unsafe.Slice((*byte)(unsafe.Pointer(uintptr(ptr))), length)
+	return string(bytes)
 }

@@ -22,6 +22,7 @@ type WASMBridge struct {
 	lockFn     api.Function
 	unlockFn   api.Function
 	checkFn    api.Function
+	memOffset  uint32 // Current memory offset for dynamic allocation
 }
 
 // NewWASMBridge creates and initializes a WASM bridge for session state
@@ -66,6 +67,7 @@ func NewWASMBridge(ctx context.Context, wasmPath string) (*WASMBridge, error) {
 		lockFn:     lockFn,
 		unlockFn:   unlockFn,
 		checkFn:    checkFn,
+		memOffset:  1024, // Start after the first 1KB to avoid stack/heap conflicts
 	}
 
 	fmt.Fprintf(os.Stderr, "[SESSION][WASM] WASM bridge initialized successfully\n")
@@ -74,16 +76,19 @@ func NewWASMBridge(ctx context.Context, wasmPath string) (*WASMBridge, error) {
 
 // ValidateAndLockWASM validates and locks a repository in WASM
 func (wb *WASMBridge) ValidateAndLockWASM(repoContext *RepositoryContext) error {
-	wb.mu.RLock()
+	wb.mu.Lock()
+	defer wb.mu.Unlock()
+
 	if wb.closed {
-		wb.mu.RUnlock()
 		return fmt.Errorf("WASM bridge is closed")
 	}
-	wb.mu.RUnlock()
 
 	if repoContext == nil {
 		return nil
 	}
+
+	// Reset memory offset before each operation to allow memory reuse
+	wb.resetMemoryOffset()
 
 	ownerPtr, err := wb.writeString(repoContext.Owner)
 	if err != nil {
@@ -118,12 +123,15 @@ func (wb *WASMBridge) ValidateAndLockWASM(repoContext *RepositoryContext) error 
 
 // LockRepositoryWASM locks a repository in WASM
 func (wb *WASMBridge) LockRepositoryWASM(owner, repo string) error {
-	wb.mu.RLock()
+	wb.mu.Lock()
+	defer wb.mu.Unlock()
+
 	if wb.closed {
-		wb.mu.RUnlock()
 		return fmt.Errorf("WASM bridge is closed")
 	}
-	wb.mu.RUnlock()
+
+	// Reset memory offset before each operation to allow memory reuse
+	wb.resetMemoryOffset()
 
 	ownerPtr, err := wb.writeString(owner)
 	if err != nil {
@@ -197,19 +205,39 @@ func (wb *WASMBridge) CheckLockStatusWASM() (bool, string, error) {
 }
 
 // writeString writes a string to WASM memory and returns the pointer
+// Uses sequential allocation to avoid overwriting previous strings
 func (wb *WASMBridge) writeString(s string) (uint32, error) {
 	memory := wb.module.Memory()
 	if memory == nil {
 		return 0, fmt.Errorf("module has no memory")
 	}
 
-	ptr := uint32(1024)
 	buf := []byte(s)
+	ptr := wb.memOffset
+
+	// Check if we have enough memory
+	memSize := memory.Size()
+	if uint64(ptr)+uint64(len(buf)) > uint64(memSize) {
+		return 0, fmt.Errorf("not enough memory: need %d bytes at offset %d, memory size is %d", len(buf), ptr, memSize)
+	}
+
 	if ok := memory.Write(ptr, buf); !ok {
 		return 0, fmt.Errorf("failed to write to memory at offset %d", ptr)
 	}
 
+	// Advance offset for next allocation, align to 8 bytes for safety
+	wb.memOffset = ptr + uint32(len(buf))
+	if wb.memOffset%8 != 0 {
+		wb.memOffset += 8 - (wb.memOffset % 8)
+	}
+
 	return ptr, nil
+}
+
+// resetMemoryOffset resets the memory allocation offset back to the start
+// Called before each operation to allow memory reuse
+func (wb *WASMBridge) resetMemoryOffset() {
+	wb.memOffset = 1024
 }
 
 // Close closes the WASM bridge and releases resources
