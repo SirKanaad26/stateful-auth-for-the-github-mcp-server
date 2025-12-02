@@ -1,0 +1,24 @@
+#!/bin/bash
+set -e
+
+# Build WASM module for session state validation
+mkdir -p wasm/sessionstate
+
+echo "[WASM] Building session state WASM module..."
+GOOS=js GOARCH=wasm CGO_ENABLED=0 go build \
+  -o wasm/sessionstate/sessionstate.wasm \
+  ./cmd/wasm/sessionstate
+
+echo "[WASM] Copying wasm_exec.js runtime helper..."
+WASM_EXEC_PATH="$(go env GOROOT)/lib/wasm/wasm_exec.js"
+if [ ! -f "$WASM_EXEC_PATH" ]; then
+  WASM_EXEC_PATH="$(go env GOROOT)/misc/wasm/wasm_exec.js"
+fi
+if [ -f "$WASM_EXEC_PATH" ]; then
+  cp "$WASM_EXEC_PATH" wasm/sessionstate/
+else
+  echo "[WASM] Warning: wasm_exec.js not found in GOROOT"
+fi
+
+echo "[WASM] Build completed successfully"
+ls -lh wasm/sessionstate/

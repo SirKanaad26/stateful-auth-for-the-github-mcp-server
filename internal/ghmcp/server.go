@@ -66,7 +66,8 @@ type MCPServerConfig struct {
 
 	// EnableStatefulAuth controls whether stateful authorization is enabled.
 	// When false, session validation is skipped for performance testing.
-	EnableStatefulAuth bool
+	EnableStatefulAuth   bool
+	WAsmSessionStatePath string
 }
 
 const stdioServerLogPrefix = "stdioserver"
@@ -126,7 +127,11 @@ func NewMCPServer(cfg MCPServerConfig, logger *slog.Logger) (*server.MCPServer, 
 	// If EnableStatefulAuth is false, session will be nil (stateful auth disabled)
 	var session *sessionstate.Session
 	if cfg.EnableStatefulAuth {
-		session = sessionstate.NewSession()
+		if cfg.WAsmSessionStatePath != "" {
+			session = sessionstate.NewSessionWithWASM(context.Background(), cfg.WAsmSessionStatePath)
+		} else {
+			session = sessionstate.NewSession()
+		}
 		fmt.Fprintf(os.Stderr, "[SERVER] Stateful authorization ENABLED\n")
 	} else {
 		fmt.Fprintf(os.Stderr, "[SERVER] Stateful authorization DISABLED (performance mode)\n")
@@ -137,7 +142,11 @@ func NewMCPServer(cfg MCPServerConfig, logger *slog.Logger) (*server.MCPServer, 
 			func(_ context.Context, _ any, request *mcp.InitializeRequest) {
 				// Reset session on each new initialization (new conversation)
 				if cfg.EnableStatefulAuth {
-					session = sessionstate.NewSession()
+					if cfg.WAsmSessionStatePath != "" {
+						session = sessionstate.NewSessionWithWASM(context.Background(), cfg.WAsmSessionStatePath)
+					} else {
+						session = sessionstate.NewSession()
+					}
 					fmt.Fprintf(os.Stderr, "[SESSION] Reset on new initialization\n")
 				}
 				// Also call the original beforeInit logic
@@ -292,7 +301,8 @@ type StdioServerConfig struct {
 
 	// EnableStatefulAuth controls whether stateful authorization is enabled.
 	// When false, session validation is skipped (no repository locking).
-	EnableStatefulAuth bool
+	EnableStatefulAuth   bool
+	WAsmSessionStatePath string
 }
 
 // RunStdioServer is not concurrent safe.
